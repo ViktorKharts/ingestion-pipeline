@@ -20,7 +20,8 @@ import (
 
 const (
 	FOLDER_MIME_TYPE             = "application/vnd.google-apps.folder"
-	FILE_MIME_TYPE               = "application/vnd.google-apps.file"
+	MD_MIME_TYPE                 = "text/markdown"
+	TXT_MIME_TYPE                = "text/plain"
 	INGESTION_PIPELINE_FOLDER_ID = "16RWlHvc-TKdqpBYDJMQdt319BS7AvjxM"
 )
 
@@ -64,14 +65,15 @@ func main() {
 		log.Fatalf("Failed to injest folder '%s': %v\n", folderId, err)
 	}
 
-	fmt.Printf("Ingested documents:\n")
+	log.Printf("\nINFO: Ingested documents:\n")
 	for _, document := range documents {
-		fmt.Printf("%s (%s) - %d bytes\n", document.FilePath, document.Extension, document.SizeBytes)
+		log.Printf("%s (%s) - %d bytes\n", document.FilePath, document.Extension, document.SizeBytes)
 	}
 }
 
 func ingestFolder(service *drive.Service, folderId string, currentPath string) ([]*Document, error) {
-	log.Printf("initiating folder ingestion - %s", folderId)
+	log.Printf("INIT: initiating folder ingestion - %s", folderId)
+
 	var allDocuments []*Document
 	query := fmt.Sprintf("'%s' in parents and trashed=false", folderId)
 	pageToken := ""
@@ -88,30 +90,29 @@ func ingestFolder(service *drive.Service, folderId string, currentPath string) (
 
 		response, err := call.Do()
 		if err != nil {
-			return nil, fmt.Errorf("Failed to list files: %w\n", err)
+			return nil, fmt.Errorf("failed to list files: %w\n", err)
 		}
 
 		for _, file := range response.Files {
+			log.Printf("INFO: checking object - %s\n", file.Name)
 			filePath := filepath.Join(currentPath, file.Name)
+			log.Printf("INFO: mimetype - %s\n", file.MimeType)
 
 			if file.MimeType == FOLDER_MIME_TYPE {
-				subDocs, err := ingestFolder(service, folderId, filePath)
+				subDocs, err := ingestFolder(service, file.Id, filePath)
 				if err != nil {
-					log.Printf("Warning: Failed to process sub-folder '%s': %v\n", filePath, err)
+					log.Printf("WARNING: Failed to process sub-folder '%s': %v\n", filePath, err)
 				}
 				allDocuments = append(allDocuments, subDocs...)
 			}
 
-			if file.MimeType == FILE_MIME_TYPE {
-				ext := strings.ToLower(filepath.Ext(file.Name))
-				if ext == ".txt" || ext == ".md" {
-					doc, err := extractFileContent(service, file, filePath)
-					if err != nil {
-						log.Printf("Warning: Failed to extract content from '%s': %v", file.Name, err)
-					}
-
-					allDocuments = append(allDocuments, doc)
+			if file.MimeType == MD_MIME_TYPE || file.MimeType == TXT_MIME_TYPE {
+				doc, err := extractFileContent(service, file, filePath)
+				if err != nil {
+					log.Printf("WARNING: Failed to extract content from '%s': %v", file.Name, err)
 				}
+
+				allDocuments = append(allDocuments, doc)
 			}
 		}
 
@@ -125,6 +126,7 @@ func ingestFolder(service *drive.Service, folderId string, currentPath string) (
 }
 
 func extractFileContent(service *drive.Service, file *drive.File, fullPath string) (*Document, error) {
+	log.Printf("INFO: extracting file %s\n", file.Name)
 	response, err := service.Files.Get(file.Id).Download()
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
