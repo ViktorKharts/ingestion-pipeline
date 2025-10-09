@@ -14,3 +14,11 @@ INSERT INTO documents (
 )
 RETURNING *;
 
+-- name: SearchDocuments :many
+SELECT *
+FROM documents
+WHERE id IN (
+    SELECT rowid FROM documents_fts WHERE documents_fts.content MATCH sqlc.arg(query)
+)
+LIMIT sqlc.arg(limit);
+

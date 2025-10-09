@@ -109,3 +109,49 @@ func (q *Queries) ListDocuments(ctx context.Context) ([]Document, error) {
 	}
 	return items, nil
 }
+
+const searchDocuments = `-- name: SearchDocuments :many
+SELECT id, drive_file_id, filename, filepath, content, extension, last_modified, size_bytes
+FROM documents
+WHERE id IN (
+    SELECT rowid FROM documents_fts WHERE documents_fts.content MATCH ?1
+)
+LIMIT ?2
+`
+
+type SearchDocumentsParams struct {
+	Query string
+	Limit int64
+}
+
+func (q *Queries) SearchDocuments(ctx context.Context, arg SearchDocumentsParams) ([]Document, error) {
+	rows, err := q.db.QueryContext(ctx, searchDocuments, arg.Query, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Document
+	for rows.Next() {
+		var i Document
+		if err := rows.Scan(
+			&i.ID,
+			&i.DriveFileID,
+			&i.Filename,
+			&i.Filepath,
+			&i.Content,
+			&i.Extension,
+			&i.LastModified,
+			&i.SizeBytes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

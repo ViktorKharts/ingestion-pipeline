@@ -14,3 +14,8 @@ type Document struct {
 	LastModified string
 	SizeBytes    int64
 }
+
+type DocumentsFt struct {
+	Filename string
+	Content  string
+}
