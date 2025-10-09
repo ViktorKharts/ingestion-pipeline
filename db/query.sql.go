@@ -52,6 +52,15 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 	return i, err
 }
 
+const deleteAllDocuments = `-- name: DeleteAllDocuments :exec
+DELETE FROM documents
+`
+
+func (q *Queries) DeleteAllDocuments(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllDocuments)
+	return err
+}
+
 const getDocument = `-- name: GetDocument :one
 SELECT id, drive_file_id, filename, filepath, content, extension, last_modified, size_bytes FROM documents
 WHERE id = ? LIMIT 1

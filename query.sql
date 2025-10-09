@@ -22,3 +22,5 @@ WHERE id IN (
 )
 LIMIT sqlc.arg(limit);
 
+-- name: DeleteAllDocuments :exec
+DELETE FROM documents;

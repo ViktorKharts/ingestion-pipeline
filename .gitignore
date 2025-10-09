@@ -2,6 +2,8 @@ dist/
 bin/
 *.db
 *.json
+*.db-shm
+*.db-wal
 .nvim
 .env
 pipeline
