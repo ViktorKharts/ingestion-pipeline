@@ -23,6 +23,7 @@ const (
 	MD_MIME_TYPE                 = "text/markdown"
 	TXT_MIME_TYPE                = "text/plain"
 	INGESTION_PIPELINE_FOLDER_ID = "16RWlHvc-TKdqpBYDJMQdt319BS7AvjxM"
+	DEFAULT_DB_PATH              = "knowledge.db"
 )
 
 type Document struct {
@@ -36,7 +37,32 @@ type Document struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "search" {
+		runSearch()
+		return
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "list" {
+		runList()
+		return
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "clear" {
+		runClear()
+		return
+	}
+
+	runIngest()
+}
+
+func runIngest() {
 	ctx := context.Background()
+
+	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	if err := db.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
 
 	b, err := os.ReadFile("credentials.json")
 	if err != nil {
@@ -62,13 +88,110 @@ func main() {
 
 	documents, err := ingestFolder(service, folderId, "/")
 	if err != nil {
-		log.Fatalf("Failed to injest folder '%s': %v\n", folderId, err)
+		log.Fatalf("Failed to ingest folder '%s': %v\n", folderId, err)
 	}
 
-	log.Printf("\nINFO: Ingested documents:\n")
+	log.Printf("INFO: Saving %d documents to database...\n", len(documents))
+	saved := 0
 	for _, document := range documents {
-		log.Printf("%s (%s) - %d bytes\n", document.FilePath, document.Extension, document.SizeBytes)
+		err := db.SaveDocument(ctx, document)
+		if err != nil {
+			log.Printf("Warning: Failed to save document %s: %v\n", document.FileName, err)
+		} else {
+			saved++
+			log.Printf("✓ Saved: %s\n", document.FilePath)
+		}
 	}
+
+	log.Printf("Ingestion complete! Saved %d/%d documents to database.\n", saved, len(documents))
+	log.Printf("Use './pipeline search <query>' to search the knowledge base\n")
+}
+
+func runSearch() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage:		./pipeline search <query>")
+		fmt.Println("Example:	./pipeline search \"login\"")
+		os.Exit(1)
+	}
+
+	query := strings.Join(os.Args[2:], " ")
+	ctx := context.Background()
+
+	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	if err := db.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	log.Printf("Searching for: \"%s\"\n\n", query)
+
+	results, err := db.SearchDocuments(ctx, query, 20)
+	if err != nil {
+		log.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) == 0 {
+		fmt.Printf("No results found for \"%s\"\n", query)
+		return
+	}
+
+	fmt.Printf("Found %d result(s):\n\n", len(results))
+
+	for i, result := range results {
+		fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+		fmt.Printf("[%d] %s\n", i+1, result.Document.Filename)
+		fmt.Printf("Path: %s\n", result.Document.Filepath)
+		fmt.Printf("Modified: %s\n", result.Document.LastModified)
+		fmt.Printf("Size: %d bytes\n\n", result.Document.SizeBytes)
+		fmt.Printf("Snippet:\n%s\n\n", result.Snippet)
+	}
+}
+
+func runList() {
+	ctx := context.Background()
+
+	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	if err := db.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	docs, err := db.ListAllDocuments(ctx)
+	if err != nil {
+		log.Fatalf("Failed to list documents: %v", err)
+	}
+
+	fmt.Printf("INFO: Total documents in database: %d\n\n", len(docs))
+
+	for i, doc := range docs {
+		fmt.Printf("%d. %s (%s) - %d bytes\n", i+1, doc.Filepath, doc.Extension, doc.SizeBytes)
+	}
+}
+
+func runClear() {
+	ctx := context.Background()
+
+	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	if err := db.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	fmt.Print("WARNING: Are you sure you want to clear all documents? (yes/no): ")
+	var response string
+	fmt.Scanln(&response)
+
+	if strings.ToLower(response) != "yes" {
+		log.Printf("INFO: Cancelled.\n")
+		return
+	}
+
+	err := db.ClearAll(ctx)
+	if err != nil {
+		log.Fatalf("Failed to clear database: %v", err)
+	}
+
+	log.Printf("INFO: All documents cleared from database.\n")
 }
 
 func ingestFolder(service *drive.Service, folderId string, currentPath string) ([]*Document, error) {
@@ -94,9 +217,8 @@ func ingestFolder(service *drive.Service, folderId string, currentPath string) (
 		}
 
 		for _, file := range response.Files {
-			log.Printf("INFO: checking object - %s\n", file.Name)
+			log.Printf("INFO: examining file - %s\n", file.Name)
 			filePath := filepath.Join(currentPath, file.Name)
-			log.Printf("INFO: mimetype - %s\n", file.MimeType)
 
 			if file.MimeType == FOLDER_MIME_TYPE {
 				subDocs, err := ingestFolder(service, file.Id, filePath)
@@ -126,7 +248,7 @@ func ingestFolder(service *drive.Service, folderId string, currentPath string) (
 }
 
 func extractFileContent(service *drive.Service, file *drive.File, fullPath string) (*Document, error) {
-	log.Printf("INFO: extracting file %s\n", file.Name)
+	log.Printf("INFO: extracting file - %s\n", file.Name)
 	response, err := service.Files.Get(file.Id).Download()
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
