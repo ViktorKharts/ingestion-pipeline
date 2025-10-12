@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"injestion-pipeline/auth"
 	"injestion-pipeline/models"
+	"injestion-pipeline/storage"
 	"io"
 	"log"
 	"os"
@@ -45,7 +46,7 @@ func main() {
 func runIngest() {
 	ctx := context.Background()
 
-	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	db := storage.NewSQLiteDB(DEFAULT_DB_PATH)
 	if err := db.Initialize(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -108,7 +109,7 @@ func runSearch() {
 	query := strings.Join(os.Args[2:], " ")
 	ctx := context.Background()
 
-	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	db := storage.NewSQLiteDB(DEFAULT_DB_PATH)
 	if err := db.Initialize(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -141,7 +142,7 @@ func runSearch() {
 func runList() {
 	ctx := context.Background()
 
-	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	db := storage.NewSQLiteDB(DEFAULT_DB_PATH)
 	if err := db.Initialize(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -162,7 +163,7 @@ func runList() {
 func runClear() {
 	ctx := context.Background()
 
-	db := NewSQLiteDB(DEFAULT_DB_PATH)
+	db := storage.NewSQLiteDB(DEFAULT_DB_PATH)
 	if err := db.Initialize(); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}

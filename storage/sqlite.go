@@ -1,4 +1,4 @@
-package main
+package storage
 
 import (
 	"context"
@@ -12,20 +12,6 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
-
-type Database interface {
-	Initialize() error
-	SaveDocument(ctx context.Context, doc *models.Document) error
-	SearchDocuments(ctx context.Context, query string, limit int) ([]SearchResult, error)
-	ListAllDocuments(ctx context.Context) ([]pipeline.Document, error)
-	ClearAll(ctx context.Context) error
-	Close() error
-}
-
-type SearchResult struct {
-	Document pipeline.Document
-	Snippet  string
-}
 
 type SQLiteDB struct {
 	db      *sql.DB
