@@ -3,9 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"injestion-pipeline/storage"
 	"log"
 	"strings"
+
+	"injestion-pipeline/storage"
 
 	"github.com/spf13/cobra"
 )

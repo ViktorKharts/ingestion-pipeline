@@ -3,9 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"injestion-pipeline/storage"
 	"log"
 	"strings"
+
+	"injestion-pipeline/storage"
 
 	"github.com/spf13/cobra"
 )
@@ -23,7 +24,6 @@ Examples:
   pipeline search "login"
   pipeline search "user authentication"
   pipeline search --limit 10 "error handling"`,
-	Args: cobra.MinimumNArgs(1),
 	RunE: runSearch,
 }
 
@@ -32,7 +32,7 @@ func init() {
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
-	if len(args) < 3 {
+	if len(args) == 0 {
 		fmt.Println("Usage:		./pipeline search <query>")
 		fmt.Println("Example:	./pipeline search \"login\"")
 		return nil
@@ -43,7 +43,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	db := storage.NewSQLiteDB(DEFAULT_DB_PATH)
 	if err := db.Initialize(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		return fmt.Errorf("Failed to initialize database: %w", err)
 	}
 	defer db.Close()
 
@@ -51,7 +51,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	results, err := db.SearchDocuments(ctx, query, 20)
 	if err != nil {
-		log.Fatalf("Search failed: %v", err)
+		return fmt.Errorf("Search failed: %w", err)
 	}
 
 	if len(results) == 0 {
@@ -69,4 +69,6 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Size: %d bytes\n\n", result.Document.SizeBytes)
 		fmt.Printf("Snippet:\n%s\n\n", result.Snippet)
 	}
+
+	return nil
 }
