@@ -8,13 +8,14 @@ import (
 	"strings"
 
 	pipeline "injestion-pipeline/db"
+	"injestion-pipeline/models"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type Database interface {
 	Initialize() error
-	SaveDocument(ctx context.Context, doc *Document) error
+	SaveDocument(ctx context.Context, doc *models.Document) error
 	SearchDocuments(ctx context.Context, query string, limit int) ([]SearchResult, error)
 	ListAllDocuments(ctx context.Context) ([]pipeline.Document, error)
 	ClearAll(ctx context.Context) error
@@ -68,7 +69,7 @@ func (s *SQLiteDB) Initialize() error {
 	return nil
 }
 
-func (s *SQLiteDB) SaveDocument(ctx context.Context, doc *Document) error {
+func (s *SQLiteDB) SaveDocument(ctx context.Context, doc *models.Document) error {
 	_, err := s.queries.CreateDocument(ctx, pipeline.CreateDocumentParams{
 		DriveFileID:  doc.DriveFileID,
 		Filename:     doc.FileName,

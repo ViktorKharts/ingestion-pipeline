@@ -2,18 +2,15 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"injestion-pipeline/auth"
+	"injestion-pipeline/models"
 	"io"
 	"log"
-	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
@@ -25,16 +22,6 @@ const (
 	INGESTION_PIPELINE_FOLDER_ID = "16RWlHvc-TKdqpBYDJMQdt319BS7AvjxM"
 	DEFAULT_DB_PATH              = "knowledge.db"
 )
-
-type Document struct {
-	DriveFileID  string
-	FileName     string
-	FilePath     string
-	Content      string
-	Extension    string
-	LastModified string
-	SizeBytes    int64
-}
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "search" {
@@ -64,17 +51,21 @@ func runIngest() {
 	}
 	defer db.Close()
 
-	b, err := os.ReadFile("credentials.json")
-	if err != nil {
-		log.Fatalf("Unable to read client secret file: %v", err)
+	config := auth.Config{
+		CredentialsPath: "credentials.json",
+		TokenPath:       "token.json",
+		Scopes:          []string{drive.DriveReadonlyScope},
 	}
 
-	config, err := google.ConfigFromJSON(b, drive.DriveReadonlyScope)
+	authenticator, err := auth.NewGoogleAuthenticator(config)
 	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
+		log.Fatalf("Failed to instantiate authenticator: %v", err)
 	}
 
-	client := getClient(config)
+	client, err := authenticator.GetHTTPClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to authenticate: %v", err)
+	}
 
 	service, err := drive.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
@@ -194,10 +185,10 @@ func runClear() {
 	log.Printf("INFO: All documents cleared from database.\n")
 }
 
-func ingestFolder(service *drive.Service, folderId string, currentPath string) ([]*Document, error) {
+func ingestFolder(service *drive.Service, folderId string, currentPath string) ([]*models.Document, error) {
 	log.Printf("INIT: initiating folder ingestion - %s", folderId)
 
-	var allDocuments []*Document
+	var allDocuments []*models.Document
 	query := fmt.Sprintf("'%s' in parents and trashed=false", folderId)
 	pageToken := ""
 
@@ -247,7 +238,7 @@ func ingestFolder(service *drive.Service, folderId string, currentPath string) (
 	return allDocuments, nil
 }
 
-func extractFileContent(service *drive.Service, file *drive.File, fullPath string) (*Document, error) {
+func extractFileContent(service *drive.Service, file *drive.File, fullPath string) (*models.Document, error) {
 	log.Printf("INFO: extracting file - %s\n", file.Name)
 	response, err := service.Files.Get(file.Id).Download()
 	if err != nil {
@@ -260,7 +251,7 @@ func extractFileContent(service *drive.Service, file *drive.File, fullPath strin
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	doc := &Document{
+	doc := &models.Document{
 		DriveFileID:  file.Id,
 		FileName:     file.Name,
 		FilePath:     fullPath,
@@ -271,52 +262,4 @@ func extractFileContent(service *drive.Service, file *drive.File, fullPath strin
 	}
 
 	return doc, nil
-}
-
-func getClient(config *oauth2.Config) *http.Client {
-	tokFile := "token.json"
-	tok, err := tokenFromFile(tokFile)
-	if err != nil {
-		tok = getTokenFromWeb(config)
-		saveToken(tokFile, tok)
-	}
-	return config.Client(context.Background(), tok)
-}
-
-func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	exec.Command("xdg-open", authURL).Start()
-
-	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		log.Fatalf("Unable to read authorization code %v", err)
-	}
-
-	tok, err := config.Exchange(context.TODO(), authCode)
-	if err != nil {
-		log.Fatalf("Unable to retrieve token from web %v", err)
-	}
-
-	return tok
-}
-
-func tokenFromFile(file string) (*oauth2.Token, error) {
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	tok := &oauth2.Token{}
-	err = json.NewDecoder(f).Decode(tok)
-	return tok, err
-}
-
-func saveToken(path string, token *oauth2.Token) {
-	fmt.Printf("Saving credential file to: %s\n", path)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		log.Fatalf("Unable to cache oauth token: %v", err)
-	}
-	defer f.Close()
-	json.NewEncoder(f).Encode(token)
 }
