@@ -10,10 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	DEFAULT_DB_PATH = "knowledge.db"
-)
-
 var (
 	clearForce bool
 )
@@ -45,13 +41,13 @@ func runClear(cmd *cobra.Command, args []string) error {
 
 	db := storage.NewSQLiteDB(DEFAULT_DB_PATH)
 	if err := db.Initialize(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		return fmt.Errorf("Failed to initialize database: %w", err)
 	}
 	defer db.Close()
 
 	err := db.ClearAll(ctx)
 	if err != nil {
-		log.Fatalf("Failed to clear database: %v", err)
+		return fmt.Errorf("Failed to clear database: %w", err)
 	}
 
 	log.Printf("INFO: All documents cleared from database.\n")
